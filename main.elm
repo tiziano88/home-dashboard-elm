@@ -1,9 +1,10 @@
 module Main exposing (..)
 
 import Html
+import Html.Events
 import Http
 import Json.Decode as JD
-import Json.Encode
+import Json.Encode as JE
 
 
 type alias Model =
@@ -72,6 +73,7 @@ syncResponseDecoder =
 type Msg
     = Nop
     | Sync (Result Http.Error SyncResponse)
+    | Exec
 
 
 main =
@@ -88,12 +90,54 @@ serverUrl =
 
 
 syncRequest =
-    Json.Encode.object
-        [ ( "requestId", Json.Encode.string "xxx" )
+    JE.object
+        [ ( "requestId", JE.string "xxx" )
         , ( "inputs"
-          , Json.Encode.list
-                [ Json.Encode.object
-                    [ ( "intent", Json.Encode.string "action.devices.SYNC" )
+          , JE.list
+                [ JE.object
+                    [ ( "intent", JE.string "action.devices.SYNC" )
+                    ]
+                ]
+          )
+        ]
+
+
+executeRequest =
+    JE.object
+        [ ( "requestId", JE.string "xxx" )
+        , ( "inputs"
+          , JE.list
+                [ JE.object
+                    [ ( "intent", JE.string "action.devices.EXECUTE" )
+                    , ( "payload"
+                      , JE.object
+                            [ ( "commands"
+                              , JE.list
+                                    [ JE.object
+                                        [ ( "devices"
+                                          , JE.list
+                                                [ JE.object
+                                                    [ ( "id", JE.string "11" )
+                                                    ]
+                                                ]
+                                          )
+                                        , ( "execution"
+                                          , JE.list
+                                                [ JE.object
+                                                    [ ( "command", JE.string "action.devices.command.OnOff" )
+                                                    , ( "params"
+                                                      , JE.object
+                                                            [ ( "on", JE.bool True )
+                                                            ]
+                                                      )
+                                                    ]
+                                                ]
+                                          )
+                                        ]
+                                    ]
+                              )
+                            ]
+                      )
                     ]
                 ]
           )
@@ -115,10 +159,21 @@ update msg model =
         Sync (Ok r) ->
             ( { model | res = Just r }, Cmd.none )
 
-        _ ->
+        Sync _ ->
+            ( model, Cmd.none )
+
+        Exec ->
+            ( model
+            , Http.send Sync <| Http.post serverUrl (Http.jsonBody executeRequest) syncResponseDecoder
+            )
+
+        Nop ->
             ( model, Cmd.none )
 
 
 view : Model -> Html.Html Msg
 view model =
-    Html.text "test"
+    Html.div []
+        [ Html.text "test"
+        , Html.button [ Html.Events.onClick Exec ] [ Html.text "execute" ]
+        ]
