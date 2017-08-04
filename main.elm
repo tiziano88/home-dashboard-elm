@@ -2,13 +2,13 @@ module Main exposing (..)
 
 import Html
 import Http
-import Json.Decode
+import Json.Decode as JD
 import Json.Encode
 
 
 type alias Model =
     { serverUrl : String
-    , devices : List Device
+    , res : Maybe SyncResponse
     }
 
 
@@ -24,16 +24,54 @@ type alias ActionRequestInput =
     }
 
 
+type alias SyncResponse =
+    { requestId : String
+    , payload : Payload
+    }
+
+
 type alias Payload =
-    {}
+    { agentUserId : String
+    , devices : List Device
+    }
+
+
+type alias Device =
+    { id : String
+    , name : Name
+    , traits : List String
+    , type_ : String
+    , willReportState : Bool
+    }
+
+
+type alias Name =
+    { name : String
+    }
+
+
+syncResponseDecoder : JD.Decoder SyncResponse
+syncResponseDecoder =
+    JD.map2 SyncResponse
+        (JD.field "requestId" JD.string)
+        (JD.field "payload" <|
+            JD.map2 Payload
+                (JD.field "agentUserId" JD.string)
+                (JD.field "devices" <|
+                    JD.list <|
+                        JD.map5 Device
+                            (JD.field "id" JD.string)
+                            (JD.field "name" <| JD.map Name (JD.field "name" JD.string))
+                            (JD.field "traits" <| JD.list JD.string)
+                            (JD.field "type" JD.string)
+                            (JD.field "willReportState" JD.bool)
+                )
+        )
 
 
 type Msg
     = Nop
-
-
-type Device
-    = Light
+    | Sync (Result Http.Error SyncResponse)
 
 
 main =
@@ -46,12 +84,12 @@ main =
 
 
 serverUrl =
-    "http://127.0.0.1:1234/action"
+    "http://192.168.0.21:1234/action"
 
 
 syncRequest =
     Json.Encode.object
-        [ ( "request_id", Json.Encode.string "xxx" )
+        [ ( "requestId", Json.Encode.string "xxx" )
         , ( "inputs"
           , Json.Encode.list
                 [ Json.Encode.object
@@ -65,15 +103,20 @@ syncRequest =
 init : ( Model, Cmd Msg )
 init =
     ( { serverUrl = "http://localhost:1234/action"
-      , devices = []
+      , res = Nothing
       }
-    , Http.send (always Nop) <| Http.post serverUrl (Http.jsonBody syncRequest) Json.Decode.string
+    , Http.send Sync <| Http.post serverUrl (Http.jsonBody syncRequest) syncResponseDecoder
     )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    ( model, Cmd.none )
+    case msg of
+        Sync (Ok r) ->
+            ( { model | res = Just r }, Cmd.none )
+
+        _ ->
+            ( model, Cmd.none )
 
 
 view : Model -> Html.Html Msg
