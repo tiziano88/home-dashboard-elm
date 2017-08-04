@@ -3,6 +3,7 @@ module Main exposing (..)
 import Html
 import Http
 import Json.Decode
+import Json.Encode
 
 
 type alias Model =
@@ -48,12 +49,25 @@ serverUrl =
     "http://127.0.0.1:1234/action"
 
 
+syncRequest =
+    Json.Encode.object
+        [ ( "request_id", Json.Encode.string "xxx" )
+        , ( "inputs"
+          , Json.Encode.list
+                [ Json.Encode.object
+                    [ ( "intent", Json.Encode.string "action.devices.SYNC" )
+                    ]
+                ]
+          )
+        ]
+
+
 init : ( Model, Cmd Msg )
 init =
     ( { serverUrl = "http://localhost:1234/action"
       , devices = []
       }
-    , Http.send (always Nop) <| Http.post serverUrl (Http.stringBody "application/json" "{request_id: \"xxx\", inputs = [{intent: \"action.devices.SYNC\"}]}") Json.Decode.string
+    , Http.send (always Nop) <| Http.post serverUrl (Http.jsonBody syncRequest) Json.Decode.string
     )
 
 
