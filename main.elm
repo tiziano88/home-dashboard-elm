@@ -5,6 +5,11 @@ import Html.Events
 import Http
 import Json.Decode as JD
 import Json.Encode as JE
+import Material
+import Material.Card as Card
+import Material.Elevation as Elevation
+import Material.Options as Options exposing (css)
+import Material.Scheme
 
 
 type alias Model =
@@ -176,4 +181,14 @@ view model =
     Html.div []
         [ Html.text "test"
         , Html.button [ Html.Events.onClick Exec ] [ Html.text "execute" ]
+        , Card.view
+            [ css "height" "128px"
+            , css "width" "128px"
+            , Elevation.e8
+            ]
+            [ Card.title []
+                [ Card.head [] [ Html.text "card" ]
+                ]
+            ]
         ]
+        |> Material.Scheme.top
