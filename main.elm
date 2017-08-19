@@ -1,5 +1,8 @@
 module Main exposing (..)
 
+import Bitwise
+import Color
+import Dict
 import Html
 import Html.Events
 import Http
@@ -11,12 +14,13 @@ import Material.Card as Card
 import Material.Elevation as Elevation
 import Material.Options as Options exposing (css)
 import Material.Scheme
+import Material.Slider as Slider
 
 
 type alias Model =
     { serverUrl : String
     , res : Maybe SyncResponse
-    , devices : List Device
+    , devices : Dict.Dict DeviceId Device
     , mdl : Material.Model
     }
 
@@ -83,7 +87,7 @@ type alias Command =
 
 
 type alias DeviceRequest =
-    { id : String
+    { id : DeviceId
     }
 
 
@@ -94,17 +98,26 @@ type alias Execution =
 
 
 type alias Params =
-    { on : Bool
+    { on : Maybe Bool
+    , spectrumRGB : Maybe Int
     }
 
 
 type Device
-    = Light { id : String, name : String }
+    = Light
+        { id : DeviceId
+        , name : String
+        , hue : Float
+        }
 
 
 toDevice : DeviceResponse -> Device
 toDevice d =
-    Light { id = d.id, name = d.name.name }
+    Light
+        { id = d.id
+        , name = d.name.name
+        , hue = 0
+        }
 
 
 syncResponseDecoder : JD.Decoder SyncResponse
@@ -126,11 +139,16 @@ syncResponseDecoder =
         )
 
 
+type alias DeviceId =
+    String
+
+
 type Msg
     = Nop
     | Mdl (Material.Msg Msg)
     | Sync (Result Http.Error SyncResponse)
     | Exec ExecuteRequest
+    | SetHue DeviceId Float
 
 
 main =
@@ -164,40 +182,54 @@ executeRequestEncoder req =
     JE.object
         [ ( "requestId", JE.string req.requestId )
         , ( "inputs"
-          , JE.list
-                [ JE.object
-                    [ ( "intent", JE.string "action.devices.EXECUTE" )
-                    , ( "payload"
-                      , JE.object
-                            [ ( "commands"
-                              , JE.list
-                                    [ JE.object
-                                        [ ( "devices"
-                                          , JE.list
-                                                [ JE.object
-                                                    [ ( "id", JE.string "11" )
-                                                    ]
-                                                ]
-                                          )
-                                        , ( "execution"
-                                          , JE.list
-                                                [ JE.object
-                                                    [ ( "command", JE.string "action.devices.command.OnOff" )
-                                                    , ( "params"
-                                                      , JE.object
-                                                            [ ( "on", JE.bool True )
-                                                            ]
-                                                      )
-                                                    ]
-                                                ]
-                                          )
-                                        ]
+          , req.inputs
+                |> List.map
+                    (\input ->
+                        JE.object
+                            [ ( "intent", JE.string input.intent )
+                            , ( "payload"
+                              , JE.object
+                                    [ ( "commands"
+                                      , input.payload.commands
+                                            |> List.map
+                                                (\command ->
+                                                    JE.object
+                                                        [ ( "devices"
+                                                          , command.devices
+                                                                |> List.map
+                                                                    (\device ->
+                                                                        JE.object
+                                                                            [ ( "id", JE.string device.id )
+                                                                            ]
+                                                                    )
+                                                                |> JE.list
+                                                          )
+                                                        , ( "execution"
+                                                          , command.execution
+                                                                |> List.map
+                                                                    (\execution ->
+                                                                        JE.object
+                                                                            [ ( "command", JE.string execution.command )
+                                                                            , ( "params"
+                                                                              , JE.object <|
+                                                                                    List.filterMap identity
+                                                                                        [ (Maybe.map (\x -> ( "on", JE.bool x )) execution.params.on)
+                                                                                        , (Maybe.map (\x -> ( "color", JE.object [ ( "spectrumRGB", JE.int x ) ] )) execution.params.spectrumRGB)
+                                                                                        ]
+                                                                              )
+                                                                            ]
+                                                                    )
+                                                                |> JE.list
+                                                          )
+                                                        ]
+                                                )
+                                            |> JE.list
+                                      )
                                     ]
                               )
                             ]
-                      )
-                    ]
-                ]
+                    )
+                |> JE.list
           )
         ]
 
@@ -216,7 +248,8 @@ onOffRequest deviceId onOff =
                       , execution =
                             [ { command = "action.devices.command.OnOff"
                               , params =
-                                    { on = onOff
+                                    { on = Just onOff
+                                    , spectrumRGB = Nothing
                                     }
                               }
                             ]
@@ -228,11 +261,52 @@ onOffRequest deviceId onOff =
     }
 
 
+setColourRequest : DeviceId -> Float -> ExecuteRequest
+setColourRequest deviceId hue =
+    { requestId = "11"
+    , inputs =
+        [ { intent = "action.devices.EXECUTE"
+          , payload =
+                { commands =
+                    [ { devices =
+                            [ { id = deviceId
+                              }
+                            ]
+                      , execution =
+                            [ { command = "action.devices.command.ColorAbsolute"
+                              , params =
+                                    { on = Nothing
+                                    , spectrumRGB = Just <| toIntColor <| hueToColor hue
+                                    }
+                              }
+                            ]
+                      }
+                    ]
+                }
+          }
+        ]
+    }
+
+
+hueToColor : Float -> Color.Color
+hueToColor hue =
+    Color.hsl (degrees hue) 1 0.5
+
+
+toIntColor : Color.Color -> Int
+toIntColor c =
+    let
+        cc =
+            Color.toRgb c
+    in
+        (Bitwise.shiftLeftBy 16 cc.red) + (Bitwise.shiftLeftBy 8 cc.blue) + cc.green
+
+
 init : ( Model, Cmd Msg )
 init =
     ( { serverUrl = "http://localhost:1234/action"
       , res = Nothing
-      , devices = []
+      , devices = Dict.empty
       , mdl = Material.model
       }
     , Http.send Sync <| Http.post serverUrl (Http.jsonBody syncRequest) syncResponseDecoder
@@ -246,7 +320,15 @@ update msg model =
             Material.update Mdl msg_ model
 
         Sync (Ok r) ->
-            ( { model | res = Just r, devices = List.map toDevice r.payload.devices }, Cmd.none )
+            ( { model
+                | res = Just r
+                , devices =
+                    Dict.fromList <|
+                        List.map (\(Light l) -> ( l.id, Light l )) <|
+                            List.map toDevice r.payload.devices
+              }
+            , Cmd.none
+            )
 
         Sync _ ->
             ( model, Cmd.none )
@@ -255,6 +337,26 @@ update msg model =
             ( model
             , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder req) syncResponseDecoder
             )
+
+        SetHue id hue ->
+            let
+                device =
+                    Dict.get id model.devices
+            in
+                case device of
+                    Just (Light l) ->
+                        let
+                            nl =
+                                { l | hue = hue }
+                        in
+                            ( { model
+                                | devices = Dict.insert l.id (Light nl) model.devices
+                              }
+                            , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| setColourRequest id hue) syncResponseDecoder
+                            )
+
+                    Nothing ->
+                        ( model, Cmd.none )
 
         Nop ->
             ( model, Cmd.none )
@@ -272,7 +374,13 @@ viewDevice model d =
                     [ Card.head [] [ Html.text l.name ]
                     ]
                 , Card.actions []
-                    [ Button.render Mdl
+                    [ Slider.view
+                        [ Slider.min 0
+                        , Slider.max 360
+                        , Slider.value l.hue
+                        , Slider.onChange <| SetHue l.id
+                        ]
+                    , Button.render Mdl
                         [ 1, 1 ]
                         model.mdl
                         [ Options.onClick <| Exec <| onOffRequest l.id True
@@ -294,6 +402,6 @@ view model =
         ([ Html.text "test"
            --, Button.render a
          ]
-            ++ List.map (viewDevice model) model.devices
+            ++ List.map (viewDevice model) (Dict.values model.devices)
         )
         |> Material.Scheme.top
