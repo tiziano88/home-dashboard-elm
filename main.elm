@@ -100,6 +100,7 @@ type alias Execution =
 type alias Params =
     { on : Maybe Bool
     , spectrumRGB : Maybe Int
+    , brightness : Maybe Float
     }
 
 
@@ -108,6 +109,7 @@ type Device
         { id : DeviceId
         , name : String
         , hue : Float
+        , brightness : Float
         }
 
 
@@ -117,6 +119,7 @@ toDevice d =
         { id = d.id
         , name = d.name.name
         , hue = 0
+        , brightness = 100
         }
 
 
@@ -149,6 +152,7 @@ type Msg
     | Sync (Result Http.Error SyncResponse)
     | Exec ExecuteRequest
     | SetHue DeviceId Float
+    | SetBrightness DeviceId Float
 
 
 main =
@@ -215,6 +219,7 @@ executeRequestEncoder req =
                                                                                     List.filterMap identity
                                                                                         [ (Maybe.map (\x -> ( "on", JE.bool x )) execution.params.on)
                                                                                         , (Maybe.map (\x -> ( "color", JE.object [ ( "spectrumRGB", JE.int x ) ] )) execution.params.spectrumRGB)
+                                                                                        , (Maybe.map (\x -> ( "brightness", JE.float x )) execution.params.brightness)
                                                                                         ]
                                                                               )
                                                                             ]
@@ -250,6 +255,7 @@ onOffRequest deviceId onOff =
                               , params =
                                     { on = Just onOff
                                     , spectrumRGB = Nothing
+                                    , brightness = Nothing
                                     }
                               }
                             ]
@@ -277,6 +283,35 @@ setColourRequest deviceId hue =
                               , params =
                                     { on = Nothing
                                     , spectrumRGB = Just <| toIntColor <| hueToColor hue
+                                    , brightness = Nothing
+                                    }
+                              }
+                            ]
+                      }
+                    ]
+                }
+          }
+        ]
+    }
+
+
+setBrightnessRequest : DeviceId -> Float -> ExecuteRequest
+setBrightnessRequest deviceId brightness =
+    { requestId = "11"
+    , inputs =
+        [ { intent = "action.devices.EXECUTE"
+          , payload =
+                { commands =
+                    [ { devices =
+                            [ { id = deviceId
+                              }
+                            ]
+                      , execution =
+                            [ { command = "action.devices.command.BrightnessAbsolute"
+                              , params =
+                                    { on = Nothing
+                                    , spectrumRGB = Nothing
+                                    , brightness = Just brightness
                                     }
                               }
                             ]
@@ -296,10 +331,19 @@ hueToColor hue =
 toIntColor : Color.Color -> Int
 toIntColor c =
     let
-        cc =
+        { red, green, blue, alpha } =
             Color.toRgb c
     in
-        (Bitwise.shiftLeftBy 16 cc.red) + (Bitwise.shiftLeftBy 8 cc.blue) + cc.green
+        (Bitwise.shiftLeftBy 16 red) + (Bitwise.shiftLeftBy 8 green) + blue
+
+
+toCssColor : Color.Color -> String
+toCssColor c =
+    let
+        { red, green, blue, alpha } =
+            Color.toRgb c
+    in
+        "rgb(" ++ (toString red) ++ "," ++ (toString green) ++ "," ++ (toString blue) ++ ")"
 
 
 init : ( Model, Cmd Msg )
@@ -358,6 +402,26 @@ update msg model =
                     Nothing ->
                         ( model, Cmd.none )
 
+        SetBrightness id brightness ->
+            let
+                device =
+                    Dict.get id model.devices
+            in
+                case device of
+                    Just (Light l) ->
+                        let
+                            nl =
+                                { l | brightness = brightness }
+                        in
+                            ( { model
+                                | devices = Dict.insert l.id (Light nl) model.devices
+                              }
+                            , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| setBrightnessRequest id brightness) syncResponseDecoder
+                            )
+
+                    Nothing ->
+                        ( model, Cmd.none )
+
         Nop ->
             ( model, Cmd.none )
 
@@ -373,25 +437,37 @@ viewDevice model d =
                 [ Card.title []
                     [ Card.head [] [ Html.text l.name ]
                     ]
+                , Card.actions
+                    [ css "background-color" <| toCssColor <| hueToColor l.hue
+                    ]
+                    []
                 , Card.actions []
                     [ Slider.view
                         [ Slider.min 0
                         , Slider.max 360
+                        , Slider.step 10
                         , Slider.value l.hue
                         , Slider.onChange <| SetHue l.id
                         ]
-                    , Button.render Mdl
-                        [ 1, 1 ]
-                        model.mdl
-                        [ Options.onClick <| Exec <| onOffRequest l.id True
+                    , Slider.view
+                        [ Slider.min 0
+                        , Slider.max 100
+                        , Slider.step 10
+                        , Slider.value l.brightness
+                        , Slider.onChange <| SetBrightness l.id
                         ]
-                        [ Html.text "on" ]
                     , Button.render Mdl
                         [ 1, 1 ]
                         model.mdl
                         [ Options.onClick <| Exec <| onOffRequest l.id False
                         ]
                         [ Html.text "off" ]
+                    , Button.render Mdl
+                        [ 1, 1 ]
+                        model.mdl
+                        [ Options.onClick <| Exec <| onOffRequest l.id True
+                        ]
+                        [ Html.text "on" ]
                     ]
                 ]
 
