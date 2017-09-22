@@ -111,16 +111,47 @@ type Device
         , hue : Float
         , brightness : Float
         }
+    | Scene
+        { id : DeviceId
+        , name : String
+        , reversible : Bool
+        }
+
+
+deviceId : Device -> DeviceId
+deviceId d =
+    case d of
+        Light { id } ->
+            id
+
+        Scene { id } ->
+            id
 
 
 toDevice : DeviceResponse -> Device
 toDevice d =
-    Light
-        { id = d.id
-        , name = d.name.name
-        , hue = 0
-        , brightness = 100
-        }
+    case d.type_ of
+        "action.devices.types.LIGHT" ->
+            Light
+                { id = d.id
+                , name = d.name.name
+                , hue = 0
+                , brightness = 100
+                }
+
+        "action.devices.types.SCENE" ->
+            Scene
+                { id = d.id
+                , name = d.name.name
+                , reversible = False
+                }
+
+        _ ->
+            Scene
+                { id = "xxx"
+                , name = "xxx"
+                , reversible = False
+                }
 
 
 syncResponseDecoder : JD.Decoder SyncResponse
@@ -165,7 +196,7 @@ main =
 
 
 serverUrl =
-    "http://192.168.0.21:1234/action"
+    "http://127.0.0.1:1234/action"
 
 
 syncRequest =
@@ -348,7 +379,7 @@ toCssColor c =
 
 init : ( Model, Cmd Msg )
 init =
-    ( { serverUrl = "http://localhost:1234/action"
+    ( { serverUrl = serverUrl
       , res = Nothing
       , devices = Dict.empty
       , mdl = Material.model
@@ -368,7 +399,7 @@ update msg model =
                 | res = Just r
                 , devices =
                     Dict.fromList <|
-                        List.map (\(Light l) -> ( l.id, Light l )) <|
+                        List.map (\d -> ( deviceId d, d )) <|
                             List.map toDevice r.payload.devices
               }
             , Cmd.none
@@ -399,7 +430,7 @@ update msg model =
                             , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| setColourRequest id hue) syncResponseDecoder
                             )
 
-                    Nothing ->
+                    _ ->
                         ( model, Cmd.none )
 
         SetBrightness id brightness ->
@@ -419,7 +450,7 @@ update msg model =
                             , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| setBrightnessRequest id brightness) syncResponseDecoder
                             )
 
-                    Nothing ->
+                    _ ->
                         ( model, Cmd.none )
 
         Nop ->
@@ -466,6 +497,30 @@ viewDevice model d =
                         [ 1, 1 ]
                         model.mdl
                         [ Options.onClick <| Exec <| onOffRequest l.id True
+                        ]
+                        [ Html.text "on" ]
+                    ]
+                ]
+
+        Scene s ->
+            Card.view
+                [ css "width" "10em"
+                , Elevation.e8
+                ]
+                [ Card.title []
+                    [ Card.head [] [ Html.text s.name ]
+                    ]
+                , Card.actions []
+                    [ Button.render Mdl
+                        [ 1, 1 ]
+                        model.mdl
+                        [ Options.onClick <| Exec <| onOffRequest s.id False
+                        ]
+                        [ Html.text "off" ]
+                    , Button.render Mdl
+                        [ 1, 1 ]
+                        model.mdl
+                        [ Options.onClick <| Exec <| onOffRequest s.id True
                         ]
                         [ Html.text "on" ]
                     ]
