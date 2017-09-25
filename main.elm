@@ -15,6 +15,7 @@ import Material.Elevation as Elevation
 import Material.Options as Options exposing (css)
 import Material.Scheme
 import Material.Slider as Slider
+import Time
 
 
 type alias Model =
@@ -42,6 +43,10 @@ type alias SyncResponse =
     , payload : Payload
     }
 
+type alias QueryResponse =
+    { requestId : String
+    , payload : Payload
+    }
 
 type alias Payload =
     { agentUserId : String
@@ -77,6 +82,7 @@ type alias ExecuteRequestInput =
 
 type alias ExecuteRequestPayload =
     { commands : List Command
+    , devices : List DeviceRequest
     }
 
 
@@ -184,13 +190,14 @@ type Msg
     | Exec ExecuteRequest
     | SetHue DeviceId Float
     | SetBrightness DeviceId Float
+    | Query
 
 
 main =
     Html.program
         { init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = always (Time.every Time.second (always Query))
         , view = view
         }
 
@@ -224,7 +231,18 @@ executeRequestEncoder req =
                             [ ( "intent", JE.string input.intent )
                             , ( "payload"
                               , JE.object
-                                    [ ( "commands"
+                                    [ ( "devices"
+                                        , input.payload.devices 
+                                        |> List.map
+                                                                    (\device ->
+                                                                        JE.object
+                                                                            [ ( "id", JE.string device.id )
+                                                                            ]
+                                                                    )
+                                                                |> JE.list
+                                        
+                                        )
+                                    , ( "commands"
                                       , input.payload.commands
                                             |> List.map
                                                 (\command ->
@@ -276,7 +294,8 @@ onOffRequest deviceId onOff =
     , inputs =
         [ { intent = "action.devices.EXECUTE"
           , payload =
-                { commands =
+                { devices = []
+                    , commands =
                     [ { devices =
                             [ { id = deviceId
                               }
@@ -304,7 +323,8 @@ setColourRequest deviceId hue =
     , inputs =
         [ { intent = "action.devices.EXECUTE"
           , payload =
-                { commands =
+                { devices = []
+                    ,commands =
                     [ { devices =
                             [ { id = deviceId
                               }
@@ -332,7 +352,8 @@ setBrightnessRequest deviceId brightness =
     , inputs =
         [ { intent = "action.devices.EXECUTE"
           , payload =
-                { commands =
+                { devices = []
+                    ,commands =
                     [ { devices =
                             [ { id = deviceId
                               }
@@ -348,6 +369,19 @@ setBrightnessRequest deviceId brightness =
                             ]
                       }
                     ]
+                }
+          }
+        ]
+    }
+
+queryRequest : List DeviceId -> ExecuteRequest
+queryRequest deviceIds =
+    { requestId = "11"
+    , inputs =
+        [ { intent = "action.devices.QUERY"
+          , payload =
+                { devices = Debug.log "req"  List.map  (\deviceId -> { id = deviceId } ) deviceIds
+                , commands = []
                 }
           }
         ]
@@ -452,7 +486,10 @@ update msg model =
 
                     _ ->
                         ( model, Cmd.none )
-
+        Query ->
+            ( model
+            , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) syncResponseDecoder
+            )
         Nop ->
             ( model, Cmd.none )
 
