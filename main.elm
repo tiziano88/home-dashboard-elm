@@ -43,10 +43,12 @@ type alias SyncResponse =
     , payload : Payload
     }
 
+
 type alias QueryResponse =
     { requestId : String
     , payload : Payload
     }
+
 
 type alias Payload =
     { agentUserId : String
@@ -232,16 +234,15 @@ executeRequestEncoder req =
                             , ( "payload"
                               , JE.object
                                     [ ( "devices"
-                                        , input.payload.devices 
-                                        |> List.map
-                                                                    (\device ->
-                                                                        JE.object
-                                                                            [ ( "id", JE.string device.id )
-                                                                            ]
-                                                                    )
-                                                                |> JE.list
-                                        
-                                        )
+                                      , input.payload.devices
+                                            |> List.map
+                                                (\device ->
+                                                    JE.object
+                                                        [ ( "id", JE.string device.id )
+                                                        ]
+                                                )
+                                            |> JE.list
+                                      )
                                     , ( "commands"
                                       , input.payload.commands
                                             |> List.map
@@ -295,7 +296,7 @@ onOffRequest deviceId onOff =
         [ { intent = "action.devices.EXECUTE"
           , payload =
                 { devices = []
-                    , commands =
+                , commands =
                     [ { devices =
                             [ { id = deviceId
                               }
@@ -324,7 +325,7 @@ setColourRequest deviceId hue =
         [ { intent = "action.devices.EXECUTE"
           , payload =
                 { devices = []
-                    ,commands =
+                , commands =
                     [ { devices =
                             [ { id = deviceId
                               }
@@ -353,7 +354,7 @@ setBrightnessRequest deviceId brightness =
         [ { intent = "action.devices.EXECUTE"
           , payload =
                 { devices = []
-                    ,commands =
+                , commands =
                     [ { devices =
                             [ { id = deviceId
                               }
@@ -374,13 +375,14 @@ setBrightnessRequest deviceId brightness =
         ]
     }
 
+
 queryRequest : List DeviceId -> ExecuteRequest
 queryRequest deviceIds =
     { requestId = "11"
     , inputs =
         [ { intent = "action.devices.QUERY"
           , payload =
-                { devices = Debug.log "req"  List.map  (\deviceId -> { id = deviceId } ) deviceIds
+                { devices = Debug.log "req" List.map (\deviceId -> { id = deviceId }) deviceIds
                 , commands = []
                 }
           }
@@ -486,10 +488,12 @@ update msg model =
 
                     _ ->
                         ( model, Cmd.none )
+
         Query ->
             ( model
             , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) syncResponseDecoder
             )
+
         Nop ->
             ( model, Cmd.none )
 
