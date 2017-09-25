@@ -4,6 +4,7 @@ import Bitwise
 import Color
 import Dict
 import Html
+import Html.Attributes
 import Html.Events
 import Http
 import Json.Decode as JD
@@ -11,6 +12,7 @@ import Json.Encode as JE
 import Material
 import Material.Button as Button
 import Material.Card as Card
+import Material.Color
 import Material.Elevation as Elevation
 import Material.Options as Options exposing (css)
 import Material.Scheme
@@ -503,7 +505,8 @@ viewDevice model d =
     case d of
         Light l ->
             Card.view
-                [ css "width" "10em"
+                [ css "width" "30em"
+                , css "margin" "1em"
                 , Elevation.e8
                 ]
                 [ Card.title []
@@ -514,13 +517,15 @@ viewDevice model d =
                     ]
                     []
                 , Card.actions []
-                    [ Slider.view
+                    [ Html.text "Hue"
+                    , Slider.view
                         [ Slider.min 0
                         , Slider.max 360
                         , Slider.step 10
                         , Slider.value l.hue
                         , Slider.onChange <| SetHue l.id
                         ]
+                    , Html.text "Brightness"
                     , Slider.view
                         [ Slider.min 0
                         , Slider.max 100
@@ -545,7 +550,8 @@ viewDevice model d =
 
         Scene s ->
             Card.view
-                [ css "width" "10em"
+                [ css "width" "30em"
+                , css "margin" "1em"
                 , Elevation.e8
                 ]
                 [ Card.title []
@@ -570,7 +576,10 @@ viewDevice model d =
 
 view : Model -> Html.Html Msg
 view model =
-    Html.div []
+    Html.div
+        [ Html.Attributes.style
+            [ ( "background-color", "#FAFAFA" ) ]
+        ]
         ([ Html.text "test"
            --, Button.render a
          ]
