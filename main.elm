@@ -213,7 +213,7 @@ queryResponseDecoder =
                     JD.dict <|
                         JD.map3 Params
                             (JD.maybe <| JD.field "on" JD.bool)
-                            (JD.maybe <| JD.field "spectrumRGB" JD.int)
+                            (JD.maybe <| JD.field "color" (JD.field "spectrumRGB" JD.int))
                             (JD.maybe <| JD.field "brightness" JD.float)
                 )
         )
@@ -421,7 +421,7 @@ queryRequest deviceIds =
     , inputs =
         [ { intent = "action.devices.QUERY"
           , payload =
-                { devices = Debug.log "req" List.map (\deviceId -> { id = deviceId }) deviceIds
+                { devices = List.map (\deviceId -> { id = deviceId }) deviceIds
                 , commands = []
                 }
           }
@@ -431,7 +431,16 @@ queryRequest deviceIds =
 
 hueToColor : Float -> Color.Color
 hueToColor hue =
-    Color.hsl (degrees hue) 1 0.5
+    Color.hsl hue 1 0.5
+
+
+hueFromColor : Color.Color -> Float
+hueFromColor c =
+    let
+        { hue, saturation, alpha } =
+            Color.toHsl c
+    in
+        hue
 
 
 toIntColor : Color.Color -> Int
@@ -441,6 +450,21 @@ toIntColor c =
             Color.toRgb c
     in
         (Bitwise.shiftLeftBy 16 red) + (Bitwise.shiftLeftBy 8 green) + blue
+
+
+fromIntColor : Int -> Color.Color
+fromIntColor c =
+    let
+        red =
+            Bitwise.and 0xFF <| Bitwise.shiftRightBy 16 c
+
+        green =
+            Bitwise.and 0xFF <| Bitwise.shiftRightBy 8 c
+
+        blue =
+            Bitwise.and 0xFF c
+    in
+        Color.rgb red green blue
 
 
 toCssColor : Color.Color -> String
@@ -485,6 +509,19 @@ update msg model =
                                 Nothing ->
                                     device
 
+                        updateHue device =
+                            case params.spectrumRGB of
+                                Just b ->
+                                    case device of
+                                        Light l ->
+                                            Light { l | hue = hueFromColor <| fromIntColor <| b }
+
+                                        _ ->
+                                            device
+
+                                Nothing ->
+                                    device
+
                         updateOn device =
                             case params.on of
                                 Just b ->
@@ -498,12 +535,14 @@ update msg model =
                                 Nothing ->
                                     device
                     in
-                        updateBrightness <| updateOn <| device
+                        updateHue <| updateBrightness <| updateOn <| device
 
                 newDevices =
                     r.payload.devices
                         |> Dict.toList
-                        |> List.foldl (\( id, params ) devices -> Dict.update id (Maybe.map (updateDevice params)) devices) model.devices
+                        |> List.foldl
+                            (\( id, params ) devices -> Dict.update id (Maybe.map (updateDevice params)) devices)
+                            model.devices
             in
                 ( { model | devices = newDevices }, Cmd.none )
 
@@ -562,7 +601,11 @@ update msg model =
                             ( { model
                                 | devices = Dict.insert l.id (Light nl) model.devices
                               }
-                            , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| setBrightnessRequest id brightness) syncResponseDecoder
+                            , Http.send Sync <|
+                                Http.post
+                                    serverUrl
+                                    (Http.jsonBody <| executeRequestEncoder <| setBrightnessRequest id brightness)
+                                    syncResponseDecoder
                             )
 
                     _ ->
@@ -570,7 +613,11 @@ update msg model =
 
         Query ->
             ( model
-            , Http.send QueryResponseMsg <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) queryResponseDecoder
+            , Http.send QueryResponseMsg <|
+                Http.post
+                    serverUrl
+                    (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices)
+                    queryResponseDecoder
             )
 
         Nop ->
@@ -597,8 +644,8 @@ viewDevice model d =
                     [ Html.text "Hue"
                     , Slider.view
                         [ Slider.min 0
-                        , Slider.max 360
-                        , Slider.step 10
+                        , Slider.max (2 * pi)
+                        , Slider.step 0.1
                         , Slider.value l.hue
                         , Slider.onChange <| SetHue l.id
                         ]
