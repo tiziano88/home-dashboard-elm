@@ -50,8 +50,10 @@ type alias QueryResponse =
     , payload : QueryResponsePayload
     }
 
+
 type alias QueryResponsePayload =
     { devices : Dict.Dict DeviceId Params }
+
 
 type alias Payload =
     { agentUserId : String
@@ -127,6 +129,10 @@ type Device
         , name : String
         , reversible : Bool
         }
+    | Thermostat
+        { id : DeviceId
+        , name : String
+        }
 
 
 deviceId : Device -> DeviceId
@@ -136,6 +142,9 @@ deviceId d =
             id
 
         Scene { id } ->
+            id
+
+        Thermostat { id } ->
             id
 
 
@@ -155,6 +164,12 @@ toDevice d =
                 { id = d.id
                 , name = d.name.name
                 , reversible = False
+                }
+
+        "action.devices.types.THERMOSTAT" ->
+            Thermostat
+                { id = d.id
+                , name = d.name.name
                 }
 
         _ ->
@@ -183,6 +198,7 @@ syncResponseDecoder =
                 )
         )
 
+
 queryResponseDecoder : JD.Decoder QueryResponse
 queryResponseDecoder =
     JD.map2 QueryResponse
@@ -198,8 +214,10 @@ queryResponseDecoder =
                 )
         )
 
+
 type alias DeviceId =
     String
+
 
 type Msg
     = Nop
@@ -447,8 +465,11 @@ update msg model =
             Material.update Mdl msg_ model
 
         -- TODO: map x.payload.devices and stick them into devices
-        QueryResponseMsg (Ok x) ->  (model, Cmd.none)
-        QueryResponseMsg _ -> (model, Cmd.none)
+        QueryResponseMsg (Ok x) ->
+            ( model, Cmd.none )
+
+        QueryResponseMsg _ ->
+            ( model, Cmd.none )
 
         Sync (Ok r) ->
             ( { model
@@ -510,7 +531,8 @@ update msg model =
 
         Query ->
             ( model
-            , Http.send QueryResponseMsg <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) queryResponseDecoder)
+            , Http.send QueryResponseMsg <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) queryResponseDecoder
+            )
 
         Nop ->
             ( model, Cmd.none )
@@ -584,6 +606,31 @@ viewDevice model d =
                         [ 1, 1 ]
                         model.mdl
                         [ Options.onClick <| Exec <| onOffRequest s.id True
+                        ]
+                        [ Html.text "on" ]
+                    ]
+                ]
+
+        Thermostat t ->
+            Card.view
+                [ css "width" "30em"
+                , css "margin" "1em"
+                , Elevation.e8
+                ]
+                [ Card.title []
+                    [ Card.head [] [ Html.text t.name ]
+                    ]
+                , Card.actions []
+                    [ Button.render Mdl
+                        [ 1, 1 ]
+                        model.mdl
+                        [ Options.onClick <| Exec <| onOffRequest t.id False
+                        ]
+                        [ Html.text "off" ]
+                    , Button.render Mdl
+                        [ 1, 1 ]
+                        model.mdl
+                        [ Options.onClick <| Exec <| onOffRequest t.id True
                         ]
                         [ Html.text "on" ]
                     ]
