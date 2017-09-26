@@ -48,9 +48,11 @@ type alias SyncResponse =
 
 type alias QueryResponse =
     { requestId : String
-    , payload : Payload
+    , payload : QueryResponsePayload
     }
 
+type alias QueryResponsePayload =
+    { devices : Dict.Dict DeviceId Params }
 
 type alias Payload =
     { agentUserId : String
@@ -182,10 +184,23 @@ syncResponseDecoder =
                 )
         )
 
+queryResponseDecoder : JD.Decoder QueryResponse
+queryResponseDecoder =
+    JD.map2 QueryResponse
+        (JD.field "requestId" JD.string)
+        (JD.field "payload" <|
+            JD.map QueryResponsePayload
+                (JD.field "devices" <|
+                    JD.dict <|
+                        JD.map3 Params
+                            (JD.maybe <| JD.field "on" JD.bool)
+                            (JD.maybe <| JD.field "spectrumRGB" JD.int)
+                            (JD.maybe <| JD.field "brightness" JD.float)
+                )
+        )
 
 type alias DeviceId =
     String
-
 
 type Msg
     = Nop
@@ -195,6 +210,7 @@ type Msg
     | SetHue DeviceId Float
     | SetBrightness DeviceId Float
     | Query
+    | QueryResponseMsg (Result Http.Error QueryResponse)
 
 
 main =
@@ -432,6 +448,10 @@ update msg model =
         Mdl msg_ ->
             Material.update Mdl msg_ model
 
+        -- TODO: map x.payload.devices and stick them into devices
+        QueryResponseMsg (Ok x) ->  (model, Cmd.none)
+        QueryResponseMsg _ -> (model, Cmd.none)
+
         Sync (Ok r) ->
             ( { model
                 | res = Just r
@@ -493,8 +513,7 @@ update msg model =
 
         Query ->
             ( model
-            , Http.send Sync <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) syncResponseDecoder
-            )
+            , Http.send QueryResponseMsg <| Http.post serverUrl (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys model.devices) queryResponseDecoder)
 
         Nop ->
             ( model, Cmd.none )
