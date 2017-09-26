@@ -22,7 +22,6 @@ import Time
 
 type alias Model =
     { serverUrl : String
-    , res : Maybe SyncResponse
     , devices : Dict.Dict DeviceId Device
     , mdl : Material.Model
     }
@@ -418,7 +417,6 @@ toCssColor c =
 init : ( Model, Cmd Msg )
 init =
     ( { serverUrl = serverUrl
-      , res = Nothing
       , devices = Dict.empty
       , mdl = Material.model
       }
@@ -434,8 +432,7 @@ update msg model =
 
         Sync (Ok r) ->
             ( { model
-                | res = Just r
-                , devices =
+                | devices =
                     Dict.fromList <|
                         List.map (\d -> ( deviceId d, d )) <|
                             List.map toDevice r.payload.devices
