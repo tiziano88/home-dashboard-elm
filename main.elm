@@ -123,6 +123,7 @@ type Device
         , name : String
         , hue : Float
         , brightness : Float
+        , on : Bool
         }
     | Scene
         { id : DeviceId
@@ -132,6 +133,7 @@ type Device
     | Thermostat
         { id : DeviceId
         , name : String
+        , setTemperature : Int
         }
 
 
@@ -157,6 +159,7 @@ toDevice d =
                 , name = d.name.name
                 , hue = 0
                 , brightness = 100
+                , on = False
                 }
 
         "action.devices.types.SCENE" ->
@@ -170,6 +173,7 @@ toDevice d =
             Thermostat
                 { id = d.id
                 , name = d.name.name
+                , setTemperature = 0
                 }
 
         _ ->
@@ -464,9 +468,44 @@ update msg model =
         Mdl msg_ ->
             Material.update Mdl msg_ model
 
-        -- TODO: map x.payload.devices and stick them into devices
-        QueryResponseMsg (Ok x) ->
-            ( model, Cmd.none )
+        QueryResponseMsg (Ok r) ->
+            let
+                updateDevice params device =
+                    let
+                        updateBrightness device =
+                            case params.brightness of
+                                Just b ->
+                                    case device of
+                                        Light l ->
+                                            Light { l | brightness = b }
+
+                                        _ ->
+                                            device
+
+                                Nothing ->
+                                    device
+
+                        updateOn device =
+                            case params.on of
+                                Just b ->
+                                    case device of
+                                        Light l ->
+                                            Light { l | on = b }
+
+                                        _ ->
+                                            device
+
+                                Nothing ->
+                                    device
+                    in
+                        updateBrightness <| updateOn <| device
+
+                newDevices =
+                    r.payload.devices
+                        |> Dict.toList
+                        |> List.foldl (\( id, params ) devices -> Dict.update id (Maybe.map (updateDevice params)) devices) model.devices
+            in
+                ( { model | devices = newDevices }, Cmd.none )
 
         QueryResponseMsg _ ->
             ( model, Cmd.none )
@@ -621,7 +660,8 @@ viewDevice model d =
                     [ Card.head [] [ Html.text t.name ]
                     ]
                 , Card.actions []
-                    [ Button.render Mdl
+                    [ Html.text <| "Set temperature: " ++ (toString t.setTemperature)
+                    , Button.render Mdl
                         [ 1, 1 ]
                         model.mdl
                         [ Options.onClick <| Exec <| onOffRequest t.id False
