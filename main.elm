@@ -493,8 +493,9 @@ update msg model =
             Material.update Mdl msg_ model
 
         QueryResponseMsg (Ok r) ->
+            -- Point-Free FTW! :D
             let
-                updateDevice params device =
+                updateDevice params =
                     let
                         updateBrightness device =
                             case params.brightness of
@@ -535,29 +536,34 @@ update msg model =
                                 Nothing ->
                                     device
                     in
-                        updateHue <| updateBrightness <| updateOn <| device
+                        updateHue << updateBrightness << updateOn
 
-                newDevices =
+                devices =
                     r.payload.devices
                         |> Dict.toList
                         |> List.foldl
-                            (\( id, params ) devices -> Dict.update id (Maybe.map (updateDevice params)) devices)
+                            (\( id, params ) -> Dict.update id (Maybe.map (updateDevice params)))
                             model.devices
             in
-                ( { model | devices = newDevices }, Cmd.none )
+                ( { model | devices = devices }, Cmd.none )
 
         QueryResponseMsg _ ->
             ( model, Cmd.none )
 
         Sync (Ok r) ->
-            ( { model
-                | devices =
+            let
+                devices =
                     Dict.fromList <|
                         List.map (\d -> ( deviceId d, d )) <|
                             List.map toDevice r.payload.devices
-              }
-            , Cmd.none
-            )
+            in
+                ( { model | devices = devices }
+                , Http.send QueryResponseMsg <|
+                    Http.post
+                        serverUrl
+                        (Http.jsonBody <| executeRequestEncoder <| queryRequest <| Dict.keys devices)
+                        queryResponseDecoder
+                )
 
         Sync _ ->
             ( model, Cmd.none )
