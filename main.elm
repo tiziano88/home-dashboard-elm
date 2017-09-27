@@ -17,6 +17,7 @@ import Material.Elevation as Elevation
 import Material.Options as Options exposing (css)
 import Material.Scheme
 import Material.Slider as Slider
+import Material.Typography as Typography
 import Time
 
 
@@ -711,10 +712,17 @@ viewDevice model d =
                 ]
                 [ Card.title []
                     [ Card.head [] [ Html.text t.name ]
+                    , Options.div
+                        []
+                        [ Options.span
+                            [ Typography.display4
+                            , Material.Color.text Material.Color.primary
+                            ]
+                            [ Html.text <| (toString t.setTemperature) ++ "°C" ]
+                        ]
                     ]
                 , Card.actions []
-                    [ Html.text <| "Set temperature: " ++ (toString t.setTemperature)
-                    , Button.render Mdl
+                    [ Button.render Mdl
                         [ 1, 1 ]
                         model.mdl
                         [ Options.onClick <| Exec <| onOffRequest t.id False
