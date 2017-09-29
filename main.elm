@@ -115,6 +115,10 @@ type alias Params =
     { on : Maybe Bool
     , spectrumRGB : Maybe Int
     , brightness : Maybe Float
+    , thermostatMode : Maybe String
+    , thermostatTemperatureSetpoint : Maybe Float
+    , thermostatTemperatureAmbient : Maybe Float
+    , thermostatHumidityAmbient : Maybe Float
     }
 
 
@@ -134,7 +138,7 @@ type Device
     | Thermostat
         { id : DeviceId
         , name : String
-        , setTemperature : Int
+        , setTemperature : Float
         }
 
 
@@ -212,10 +216,14 @@ queryResponseDecoder =
             JD.map QueryResponsePayload
                 (JD.field "devices" <|
                     JD.dict <|
-                        JD.map3 Params
+                        JD.map7 Params
                             (JD.maybe <| JD.field "on" JD.bool)
                             (JD.maybe <| JD.field "color" (JD.field "spectrumRGB" JD.int))
                             (JD.maybe <| JD.field "brightness" JD.float)
+                            (JD.maybe <| JD.field "thermostatMode" JD.string)
+                            (JD.maybe <| JD.field "thermostatTemperatureSetpoint" JD.float)
+                            (JD.maybe <| JD.field "thermostatTemperatureAmbient" JD.float)
+                            (JD.maybe <| JD.field "thermostatHumidityAmbient" JD.float)
                 )
         )
 
@@ -245,7 +253,7 @@ main =
 
 
 serverUrl =
-    "http://127.0.0.1:1234/action"
+    "https://smartlights.eu.ngrok.io/action"
 
 
 syncRequest =
@@ -347,6 +355,10 @@ onOffRequest deviceId onOff =
                                     { on = Just onOff
                                     , spectrumRGB = Nothing
                                     , brightness = Nothing
+                                    , thermostatMode = Nothing
+                                    , thermostatTemperatureSetpoint = Nothing
+                                    , thermostatTemperatureAmbient = Nothing
+                                    , thermostatHumidityAmbient = Nothing
                                     }
                               }
                             ]
@@ -376,6 +388,10 @@ setColourRequest deviceId hue =
                                     { on = Nothing
                                     , spectrumRGB = Just <| toIntColor <| hueToColor hue
                                     , brightness = Nothing
+                                    , thermostatMode = Nothing
+                                    , thermostatTemperatureSetpoint = Nothing
+                                    , thermostatTemperatureAmbient = Nothing
+                                    , thermostatHumidityAmbient = Nothing
                                     }
                               }
                             ]
@@ -405,6 +421,10 @@ setBrightnessRequest deviceId brightness =
                                     { on = Nothing
                                     , spectrumRGB = Nothing
                                     , brightness = Just brightness
+                                    , thermostatMode = Nothing
+                                    , thermostatTemperatureSetpoint = Nothing
+                                    , thermostatTemperatureAmbient = Nothing
+                                    , thermostatHumidityAmbient = Nothing
                                     }
                               }
                             ]
@@ -536,8 +556,21 @@ update msg model =
 
                                 Nothing ->
                                     device
+
+                        updateTemperatureSetpoint device =
+                            case params.thermostatTemperatureSetpoint of
+                                Just b ->
+                                    case device of
+                                        Thermostat t ->
+                                            Thermostat { t | setTemperature = b }
+
+                                        _ ->
+                                            device
+
+                                Nothing ->
+                                    device
                     in
-                        updateHue << updateBrightness << updateOn
+                        updateHue << updateBrightness << updateOn << updateTemperatureSetpoint
 
                 devices =
                     r.payload.devices
@@ -636,7 +669,7 @@ viewDevice model d =
     case d of
         Light l ->
             Card.view
-                [ css "width" "30em"
+                [ css "width" "20em"
                 , css "margin" "1em"
                 , Elevation.e8
                 ]
@@ -681,7 +714,7 @@ viewDevice model d =
 
         Scene s ->
             Card.view
-                [ css "width" "30em"
+                [ css "width" "20em"
                 , css "margin" "1em"
                 , Elevation.e8
                 ]
@@ -706,7 +739,7 @@ viewDevice model d =
 
         Thermostat t ->
             Card.view
-                [ css "width" "30em"
+                [ css "width" "20em"
                 , css "margin" "1em"
                 , Elevation.e8
                 ]
@@ -744,8 +777,12 @@ view model =
         [ Html.Attributes.style
             [ ( "background-color", "#FAFAFA" ) ]
         ]
-        ([ Html.text "test"
-           --, Button.render a
+        ([ --, Button.render a
+           Html.node "meta"
+            [ Html.Attributes.name "viewport"
+            , Html.Attributes.content "width=430px, initial-scale=1"
+            ]
+            []
          ]
             ++ List.map (viewDevice model) (Dict.values model.devices)
         )
